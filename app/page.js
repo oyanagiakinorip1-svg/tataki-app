@@ -1,66 +1,177 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+// app/page.js（保護されたトップページ）
+'use client'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '../lib/supabase/client'
+ 
+export default function HomePage() {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState([])
+  const [title, setTitle] = useState('')
+  const router = useRouter()
+  const supabase = createClient()
 
-export default function Home() {
+  // dialog要素を直接操作するための参照（Ref）
+  const dialogRef = useRef(null)
+
+  // データを取得する処理を関数化して、登録後にも再利用できるようにする
+  const fetchProjects = () => {
+        
+    // setLoading(true)
+
+    fetch('/api/projects')
+    .then((res) => res.json())
+    .then((data) => {
+      setProjects(data)
+      setLoading(false)
+    })
+  }
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) {
+        router.push('/login')
+      } else {
+        setUser(data.user)
+        fetchProjects()
+      }
+    })
+  }, [])
+ 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+ 
+  if (loading) return <p>読み込み中...</p>
+
+  // モーダルを開く処理
+  const openModal = () => {
+    dialogRef.current?.showModal() // ブラウザ標準の最前面レイヤーで開く
+  }
+
+  // モーダルを閉じる処理
+  const closeModal = () => {
+    dialogRef.current?.close()
+    setTitle('') // 入力値をリセット
+  }
+
+  // 登録処理
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!title.trim()) return
+
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+
+    if (res.ok) {
+      closeModal()
+      fetchProjects()
+    }
+  }
+
+    const handleDelete = async (id) => {
+        await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+        setProjects(projects.filter((b) => b.id !== id))
+    }
+ 
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.js file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+    <>
+    <header className="bg-gray-500 text-white p-4 flex justify-between">
+      <div>
+        <h1>プロジェクト一覧</h1>
+        <button onClick={openModal} className="hover:bg-gray-600">プロジェクトを追加</button>
+      </div>
+      <div>
+        <p>ようこそ、{user?.email} さん</p>
+        <button onClick={handleLogout} className="hover:bg-gray-600">ログアウト</button>
+      </div>
+    </header>
+
+    <main className="w-full py-10">
+      {loading && <p className="flex justify-center text-xl">読み込み中...</p>}
+      {!loading && projects.length === 0 && <p className="flex justify-center text-xl">まだプロジェクトが登録されていません。</p>}
+      <div className="flex flex-wrap gap-8 pt-4 px-4 w-full max-w-6xl mx-auto">
+
+        {[...projects]
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+          .map((project) => (
+            <div
+              key={project.id}
+              className="relative size-60 bg-gray-100 border border-gray-200 rounded-xl shadow-sm flex flex-col justify-center items-center group hover:bg-gray-200 transition"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+              <button
+                onClick={() => {router.push(`/projects/${project.id}`)}}
+                className="size-60 bg-gray-350 border border-gray-200 rounded-xl shadow-sm p-4 text-xl"
+              >
+                {project.title}
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation(); // カード全体のクリックイベントが連動して発動するのを防ぐ
+                  handleDelete(project.id);
+                }} 
+                className="absolute top-2 right-2 text-xs text-gray-400 hover:text-red-500 bg-white/80 hover:bg-white rounded-full p-1 shadow-sm transition"
+                title="削除"
+              >
+                <svg 
+                  className="size-5" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  strokeWidth="2.5" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))
+        }
+
+      </div>
+    </main>
+
+    <dialog 
+      ref={dialogRef}
+      className="fixed inset-0 m-auto rounded-xl shadow-xl p-0 backdrop:bg-black/50 w-full max-w-md overflow-hidden"
+    >
+      <div className="bg-gray-800 text-white p-6">
+        <h2 className="text-xl font-bold mb-4">新しいプロジェクトを追加</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm mb-1">プロジェクト名</label>
+            <input
+              placeholder="プロジェクトのタイトルを入力..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              className="w-full px-4 py-2 rounded-lg focus:outline-none"
             />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+          </div>
+                    
+          <div className="flex justify-end gap-3 mt-2">
+            <button 
+              type="button" 
+              onClick={closeModal}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition"
+            >
+              キャンセル
+            </button>
+            <button 
+              type="submit" 
+              className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg font-semibold transition"
+            >
+              作成する
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+    </>
+
+  )
 }
