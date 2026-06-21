@@ -1,0 +1,52 @@
+// 保存と削除の両方を受け付ける窓口（POST）
+function doPost(e) {
+  try {
+    const params = JSON.parse(e.postData.contents);
+    
+    // 削除命令が来た場合の処理
+    if (params.action === 'delete') {
+      const fileId = params.fileId;
+      if (!fileId) return ContentService.createTextOutput(JSON.stringify({ success: false, error: "No fileId provided" })).setMimeType(ContentService.MimeType.JSON);
+      
+      // あなたの権限でファイルをゴミ箱に移動（または完全削除）
+      const file = DriveApp.getFileById(fileId);
+      file.setTrashed(true); // 安全のため一度ゴミ箱に入れます（完全に消したい場合は Drive.Files.remove(fileId) ですが、これで十分安全です）
+      
+      return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 通常の保存処理（中身は今までと全く同じです）
+    const base64Data = params.file;
+    const fileName = params.name;
+    const mimeType = params.type;
+    const folderId = "YOUR_FOLDER_ID"; // あなたのフォルダIDに書き換えてください
+
+    const decoded = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decoded, mimeType, fileName);
+    const folder = DriveApp.getFolderById(folderId);
+    const file = folder.createFile(blob);
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      fileId: file.getId()
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// 読み込み処理（そのままでOK）
+function doGet(e) {
+  try {
+    const fileId = e.parameter.id;
+    if (!fileId) return ContentService.createTextOutput("Error: No file ID");
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    return ContentService.createTextOutput()
+      .setMimeType(ContentService.MimeType.TEXT) 
+      .setContent(Utilities.base64Encode(blob.getBytes()));
+  } catch (error) {
+    return ContentService.createTextOutput("Error: " + error.toString());
+  }
+}
